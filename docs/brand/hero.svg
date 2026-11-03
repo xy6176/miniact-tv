@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="520" viewBox="0 0 1440 520" role="img" aria-labelledby="title desc">
+  <title id="title">MiniAct · 小剧集，大屏看</title>
+  <desc id="desc">支持横版视频推荐的红果短剧 TV 客户端。黑金配色的品牌横幅，右侧为 16:9 屏幕示意。</desc>
+  <defs>
+    <radialGradient id="glow" cx="80%" cy="30%" r="75%"><stop stop-color="#76512e" stop-opacity=".48"/><stop offset="1" stop-color="#0c0e12" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff1d5"/><stop offset=".5" stop-color="#e0bd82"/><stop offset="1" stop-color="#a7793c"/></linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#343128"/><stop offset="1" stop-color="#13151b"/></linearGradient>
+    <linearGradient id="ribbon"><stop stop-color="#d5b37d" stop-opacity="0"/><stop offset=".5" stop-color="#d5b37d" stop-opacity=".18"/><stop offset="1" stop-color="#d5b37d" stop-opacity="0"/></linearGradient>
+  </defs>
+  <rect width="1440" height="520" rx="24" fill="#0c0e12"/>
+  <rect width="1440" height="520" rx="24" fill="url(#glow)"/>
+  <path d="M760 520 1215 0h125L885 520Z" fill="url(#ribbon)"/>
+  <g font-family="-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',Arial,sans-serif">
+    <text x="76" y="76" fill="#d6b88b" font-size="17" letter-spacing="5">MADE FOR THE BIG SCREEN</text>
+    <text x="70" y="219" fill="#f8f3e9" font-size="112" font-weight="600" letter-spacing="-6">MiniAct</text>
+    <text x="77" y="290" fill="url(#gold)" font-size="42" font-weight="500">小剧集，大屏看。</text>
+    <text x="78" y="354" fill="#d4d0c8" font-size="25">横版视频推荐 · 遥控追剧 · 收藏续播</text>
+    <line x1="78" y1="404" x2="437" y2="404" stroke="#746149" stroke-opacity=".7"/>
+    <text x="78" y="447" fill="#a9a59d" font-size="18">第三方红果短剧 TV 客户端</text>
+    <g transform="translate(825 129)">
+      <rect x="0" y="0" width="528" height="297" rx="20" fill="#0b0c10" stroke="#dbc18f" stroke-opacity=".5" stroke-width="2"/>
+      <rect x="10" y="10" width="508" height="277" rx="13" fill="url(#screen)"/>
+      <path d="M10 221 160 91 279 202 382 113 518 240V287H10Z" fill="#b49461" opacity=".14"/>
+      <text x="264" y="145" text-anchor="middle" fill="#f0d6aa" font-size="64" font-weight="500" letter-spacing="7">16:9</text>
+      <text x="264" y="194" text-anchor="middle" fill="#e1d4bd" font-size="23">横版视频推荐</text>
+      <line x1="198" y1="316" x2="330" y2="316" stroke="#a58c64" stroke-width="3" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>

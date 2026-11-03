@@ -1,0 +1,57 @@
+# Local machine and IDE files
+.DS_Store
+.idea/
+*.iml
+local.properties
+
+# Build and dependency output
+.gradle/
+.kotlin/
+build/
+dist/
+__pycache__/
+*.py[cod]
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.jar
+!android/gradle/wrapper/gradle-wrapper.jar
+*.aar
+*.so
+
+# Signing material and secrets — never commit these
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+keystore.properties
+signing.properties
+.env
+.env.*
+!.env.example
+secrets.properties
+
+# Local captures, proofing sheets and delivery artifacts
+docs/preview/.local/
+# playwright-cli 的本机会话日志（浏览器调试用，不入库）
+.playwright-cli/
+/captures/
+/downloads/
+/tmp/
+/outputs/
+.cxx/
+.externalNativeBuild/
+
+# Local publication material
+.publication/
+.publication-tools/
+release-assets/
+
+# 本机调试与备份产物（不入库）
+.codex/
+android_backup_*/
+android_original_backup_*.zip

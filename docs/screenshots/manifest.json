@@ -1,0 +1,42 @@
+[
+  {
+    "file": "episode-number.jpg",
+    "recordDate": "2026-11-03",
+    "device": "Vidda X2026 / Android 11",
+    "source": "work/miniact-episodes-20261103/episode-number.png",
+    "processing": "1280px max dimension, JPEG quality 74, no content edits",
+    "sha256": "bdc652d11941eb3ba2489c264184ef24d5a23bd054a7f859db1a41624ba34d88"
+  },
+  {
+    "file": "episode-ranges.jpg",
+    "recordDate": "2026-11-03",
+    "device": "Vidda X2026 / Android 11",
+    "source": "work/miniact-episodes-20261103/episode-ranges.png",
+    "processing": "1280px max dimension, JPEG quality 74, no content edits",
+    "sha256": "b1ceb2d2daaff07913f33784596a927eb127ed87068aaaac310491f39b0fc4b9"
+  },
+  {
+    "file": "home-dark.jpg",
+    "recordDate": "2026-11-02",
+    "device": "Vidda X2026 / Android 11",
+    "source": "reference/MiniAct-GitHub-20261102-before-startup-change.zip / repository/docs/screenshots/home-dark.png",
+    "processing": "1280px max dimension, JPEG quality 74, no content edits",
+    "sha256": "f7d385959e958ff56055bec502f273a3bd5d81206463fe56eeba13469c7fdd51"
+  },
+  {
+    "file": "home-ocean.jpg",
+    "recordDate": "2026-11-02",
+    "device": "Vidda X2026 / Android 11",
+    "source": "reference/MiniAct-GitHub-20261102-before-startup-change.zip / repository/docs/screenshots/home-ocean.png",
+    "processing": "1280px max dimension, JPEG quality 74, no content edits",
+    "sha256": "96830e35c89dceac0ce3eff4a29cdc556738d760fc771c74775ee614fb1ec52c"
+  },
+  {
+    "file": "home-wine.jpg",
+    "recordDate": "2026-11-02",
+    "device": "Vidda X2026 / Android 11",
+    "source": "reference/MiniAct-GitHub-20261102-before-startup-change.zip / repository/docs/screenshots/home-wine.png",
+    "processing": "1280px max dimension, JPEG quality 74, no content edits",
+    "sha256": "c34dff7494377144dd075c9932622ab8abb38a48719a5a58207430774e28617f"
+  }
+]

@@ -1,0 +1,15 @@
+<resources>
+    <!--
+      系统主题：只负责「窗口还没建出来之前的那一帧」与系统控件（光标、选择手柄）的兜底配色。
+      真正的色板在 TvTheme.kt（二十套主题），MainActivity.onCreate 会在建视图之前
+      把窗口底色换成当前主题的底色，因此这里填的是**默认主题「深海蓝」**的色值：
+      底色 #08090B、抬升面 #2A3038、深凹槽 #12151A、焦点色 #E7E5DF。
+
+      Android 4.4（API 19）上没有 Theme.Material（API 21 才有），父主题退回 Theme.Holo；
+      21+ 的覆盖项放在 values-v21/styles.xml 里，因此两边看到的是同一套色值。
+    -->
+    <style name="AppTheme" parent="android:style/Theme.Holo.NoActionBar">
+        <item name="android:windowBackground">#08090B</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>
