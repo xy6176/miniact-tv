@@ -122,6 +122,6 @@ MiniAct 为第三方项目，与红果短剧及相关品牌官方无关联。代
 
 - [HGTV](https://github.com/pan8664716/HGTV)：提供代码基础、内容接入、协议及原生播放能力；MiniAct 在此基础上改进电视界面、焦点导航、收藏刷新与长剧选集。
 - [N3urda/hongguoTV](https://github.com/N3urda/hongguoTV)：更早的上游项目。
-- [BBLL](https://github.com/xiaye13579/BBLL)、[blbl](https://github.com/cat3399/blbl)、[Aerial](https://github.com/pengchujin/aerial-tv)：电视交互与开源项目展示参考。
+
 
 直接代码基线为 `v1.2.9.1`，交接记录中的提交为 `eb83a403a7a84edef35ab2fe1a3f689fc9e9d20d`。公开源码中的 LICENSE、NOTICE 与来源文档保留完整记录。
