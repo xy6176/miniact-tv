@@ -11,7 +11,7 @@ import com.hgtv.star.compat.lowEndTv
 
 /** TV settings are a readable list, with one value and one action per row. */
 internal fun MainActivity.showMiniActSettings(parent: LinearLayout,focusNav: Boolean) {
-    val sections=listOf("播放体验","遥控与导航","画面与性能","推荐与数据")
+    val sections=listOf("播放体验","遥控与导航","画面与性能","推荐与数据","关于 MiniAct")
     settingsTab=settingsTab.coerceIn(sections.indices)
     settingsTabChips.clear()
     val shell=row().apply { gravity=Gravity.TOP; setPadding(pageBleed(),dp(10),pageBleed(),dp(12)) }
@@ -52,7 +52,8 @@ internal fun MainActivity.showMiniActSettings(parent: LinearLayout,focusNav: Boo
             0 -> "画质、连播与播放节奏。修改自动保存。"
             1 -> "选择启动页面，调整遥控按键。"
             2 -> "调整画面显示与界面效果。"
-            else -> "调整推荐偏好，管理账号与本机记录。"
+            3 -> "调整推荐偏好，管理账号与本机记录。"
+            else -> "当前版本 ${BuildConfig.VERSION_NAME}"
         }
         content.addView(text(subtitle,12f,TvStyle.muted),lp(-1,-2).apply { bottomMargin=dp(22) })
         val list=column().apply { setPadding(dp(6),dp(6),dp(6),dp(6)) }
@@ -164,7 +165,7 @@ internal fun MainActivity.showMiniActSettings(parent: LinearLayout,focusNav: Boo
                     }
                 }
             }
-            else -> {
+            3 -> {
                 setting("推荐模式","综合推荐兼顾横竖屏；横屏优先调整顺序，仍保留其他画幅。",if(miniTv.preferLandscape) "横屏优先" else "综合推荐", "miniact:recommend-mode") { anchor,update ->
                     choose("推荐模式",listOf("综合推荐（默认）","横屏优先"),if(miniTv.preferLandscape) 1 else 0,anchor) { selected ->
                         val landscape=selected==1
@@ -195,10 +196,13 @@ internal fun MainActivity.showMiniActSettings(parent: LinearLayout,focusNav: Boo
                     }.onFailure { tvTools.info("无法生成备份","请稍后重试。",anchor) }
                 }
                 setting("本机数据","历史、收藏与偏好；重置前会再次确认。","管理") { anchor,_ -> clearLocalData(anchor) }
-                setting("关于 MiniAct","基于 HGTV 的独立客户端。","${BuildConfig.VERSION_NAME}") { anchor,_ ->
-                    val dialog=TvDialog(this,"MiniAct").message("好故事，不落幕。\n\n基于 HGTV v1.2.9.1，遵循 GPL-3.0-only。MiniAct 重新设计电视界面与遥控交互；内容与播放能力沿用上游。\n\n本应用不是内容平台官方客户端。源码随安装包一并提供。\n\n感谢 HGTV、N3urda/hongguoTV 及相关开源项目的贡献者。")
-                    dialog.button("知道了"); dialog.show(anchor)
-                }
+            }
+            else -> {
+                setting("检查更新","从 GitHub 获取新版本。","检查") { anchor,_ -> checkMiniActUpdate(anchor) }
+                content.addView(text(
+                    "MiniAct 为电视与遥控器优化了短剧浏览和播放体验，遵循 GPL-3.0-only。\n\n感谢 HGTV、N3urda/hongguoTV 及相关开源项目的贡献者。",
+                    12f,TvStyle.muted
+                ).apply { setLineSpacing(0f,1.4f); setPadding(dp(22),dp(18),dp(20),0) },lp(-1,-2))
             }
         }
         firstRow=rows.firstOrNull()

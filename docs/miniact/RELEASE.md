@@ -2,12 +2,12 @@
 
 公开仓库： https://github.com/xy6176/miniact-tv
 
-当前以`v1.2.9.1-preview.1`标签准备电视体验预览，安装包保持`1.2.9.1 / 67`。应用代码未因本次公开资料整理而改变版本。初始导入标签`v1.2.9.1`保留为历史快照；预览标签包含后续自动构建配置修正，不重写旧标签。后续修改应按项目规则维护版本、标签和对应源码，不用同一公开版本反复覆盖不同应用实现。
+当前公开预览标签为 `v1.2.9.2`，安装包版本为 `1.2.9.2 / 68`。`v1.2.9.1` 和 `v1.2.9.1-preview.1` 是此前的导入与预览快照。后续发布使用递增的版本码和对应源码标签。
 
 ## 发布文件
 
-- `MiniAct-1.2.9.1.apk`：11月3日交接包中的已签名APK。
-- `MiniAct-1.2.9.1-source.zip`：本次公开仓库完整源码快照，不含`.git`、构建缓存和私钥。
+- `MiniAct-1.2.9.2-68.apk`：用原签名构建的安装包。应用内更新按 `MiniAct-<版本>-<版本码>.apk` 识别附件。
+- `MiniAct-1.2.9.2-source.zip`：公开仓库对应标签的源码快照。
 - `build-info.json`：源代码提交、版本、构建方式及公开签名证书摘要。
 - `SHA256SUMS.txt`：APK、源码快照和构建信息的完整性摘要。
 
@@ -23,6 +23,6 @@
 
 `.github/workflows/build.yml`只构建开发APK，不创建Release、不使用发布Secrets。自动构建附件不保证能覆盖正式下载的APK。
 
-旧上游工作流保存在`docs/upstream/release-workflow.yml.reference`，不执行；旧更新元数据与旧校验和不作为本项目发布文件。应用未因本次发布新增自动更新服务。
+旧上游工作流保存在 `docs/upstream/release-workflow.yml.reference` 供参考。MiniAct 的更新入口直接读取公开 GitHub Releases 的附件元数据和校验摘要。
 
 构建方式见[BUILD](BUILD.md)，功能验证见[VALIDATION](VALIDATION.md)。

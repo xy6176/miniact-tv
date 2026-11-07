@@ -867,10 +867,8 @@ internal fun MainActivity.playerFailure(problem: Throwable) {
     // 放弃时 `decide` 一定已经写过 `manualHint`，那句带着具体档位，比任何通用文案都准。
     // 按钮的可见性由三件事决定：媒体类型（音频不给视频按钮）、当前解码方式、还有没有更低档。
     val actions=row(); controls.addView(actions)
-    // 手动重试同样换一个 `device_id`（见 `ContentRepository.rotateDeviceForRetry`）：
-    // 用户按「立即重试」时最可能就是刚才那个身份被挡 / 被限速，不换号只是重放同一次失败。
     addButton(actions,"立即重试") {
-        runCatching { repository.rotateDeviceForRetry() }
+        repository.invalidatePlaybackModelCache()
         // 用户手动重试：归还本集预算（否则决策立刻再返回 null，点一下闪回错误页），
         // 但**不**撤销已经降下来的档位——那是既成事实，倒退只会再撞一次。
         // 归还次数有上限（见 `MANUAL_RETRY_LIMIT`），因此下面必须带 `recovering=true`：
@@ -912,7 +910,7 @@ internal fun MainActivity.playerFailure(problem: Throwable) {
     val lower=PlaybackDegradation.lowerThan(available,actualQuality)
     val swapTarget=if(lower!=null) PlaybackDegradation.softwareQuality(available,lower) else 0
     if(videoProblem && swapTarget>0) addButton(actions,"换到 ${swapTarget}P") {
-        runCatching { repository.rotateDeviceForRetry() }
+        repository.invalidatePlaybackModelCache()
         // 同「立即重试」：这是用户主动发起的新一轮尝试，自动重试 / 画面重建的额度一起还。
         // 档位在还款之后才落进会话层——`onManualRetry` 不动 `effectiveMaxQuality`，
         // 顺序反过来也能工作，但先还账再定档读起来才是「先清预算、再设目标」。

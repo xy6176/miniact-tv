@@ -29,7 +29,7 @@ internal class Signer(
      *
      * 为什么必须能逐次传：签名里有两处会把 `device_id` 编进密文
      *（`x-medusa` 的 message 第 5 号字段与 deviceProto 第 4 号字段）。
-     * 播放接口要按 `device_id` 换身份时才可能绕过限流（见 `ContentRepository.modelDeviceId`），
+     * 播放接口会使用已注册设备的档案，
      * 而如果 query 里是新 id、密文里还是旧 id，服务端拿到的就是一份自相矛盾的请求，
      * 直接回 `110001 未知异常`（2026-10-27 实测：App 换 id 后 117 字节 `code 110001`，
      * 同一份内容在本机探针里 `code 0`，差别就在这里）。
@@ -210,8 +210,7 @@ internal class Signer(
      * [deviceOverride] 非空时，**这一次**签名用它的档案（query 参数仍以 [values] 为准）。
      *
      * 为什么需要：[values] 里换掉 `device_id` 而 [device] 里还是旧的，`x-medusa` 会编进旧 id，
-     * 服务端看到 query 与密文不一致就回 `110001`。播放接口按 `device_id` 换身份绕限流
-     *（见 `ContentRepository.modelDeviceId`），因此那一条必须把同一份档案同时交给两者。
+     * 服务端看到 query 与密文不一致就回 `110001`，因此播放请求将同一份档案交给两者。
      */
     fun sign(
         base: String,

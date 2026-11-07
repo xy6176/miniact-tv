@@ -10,12 +10,12 @@ JDK17，Android SDK平台36，Gradle Wrapper8.14.3，AGP8.11.0，Kotlin2.1.20。
 bash tools/build-miniact.sh
 ```
 
-该脚本固定当前交付版本环境变量1.2.9.1/67后执行`:app:assembleDebug`。输出`android/app/build/outputs/apk/debug/app-debug.apk`，debug构建仍关闭应用调试。工程Gradle文件的历史回退值是1.2.9/66，直接运行而不设置环境变量会得到不同版本标识；不据此自动修改发布版本。
+该脚本默认使用交付版本 `1.2.9.2 / 68`，并执行 `:app:assembleDebug`。输出 `android/app/build/outputs/apk/debug/app-debug.apk`，开发包关闭应用调试。Gradle 默认版本相同。
 
 等价命令：
 
 ```sh
-HGTV_VERSION_NAME=1.2.9.1 HGTV_VERSION_CODE=67 bash android/gradlew -p android :app:assembleDebug -Pkotlin.compiler.execution.strategy=in-process --max-workers=1
+HGTV_VERSION_NAME=1.2.9.2 HGTV_VERSION_CODE=68 bash android/gradlew -p android :app:assembleDebug -Pkotlin.compiler.execution.strategy=in-process --max-workers=1
 ```
 
 需要节省主机内存时，可加`-Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8'`。干净环境需要正常下载依赖，不应直接复制本机专用离线SDK补丁。
@@ -24,7 +24,7 @@ HGTV_VERSION_NAME=1.2.9.1 HGTV_VERSION_CODE=67 bash android/gradlew -p android :
 
 发布资料不包含私钥、签名配置和密码。未配置delivery签名时，debug构建回落到本机debug签名，**不能保证覆盖已安装的交付APK**。后续更新需要维护者保管并沿用相应私钥；仓库公开源码本身不提供签名身份。
 
-工程支持`HGTV_KEYSTORE`、`HGTV_STORE_PASSWORD`、`HGTV_KEY_ALIAS`、`HGTV_KEY_PASSWORD`环境变量，或本机`android/keystore.properties`。只在本机/受保护的构建环境配置，不写进公开文件。版本名称与code本轮均未改动。
+工程支持 `HGTV_KEYSTORE`、`HGTV_STORE_PASSWORD`、`HGTV_KEY_ALIAS`、`HGTV_KEY_PASSWORD` 环境变量，或本机 `android/keystore.properties`。签名配置仅保存在本机或受保护的构建环境。
 
 ## 检查
 

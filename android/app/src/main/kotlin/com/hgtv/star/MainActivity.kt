@@ -947,9 +947,7 @@ class MainActivity: Activity() {
             if(!networkAvailable()) scheduleRecovery()
             else if(ledger.consumeAttempt()) {
                 android.util.Log.i("HGTV","Automatic playback recovery ${ledger.attempts}/3 at ${retryPosition}ms")
-                // 每次自动重试都换一个 `device_id`：平台按设备计额度，同一个号连试三次
-                // 大概率三次同一个结果（见 `ContentRepository.rotateDeviceForRetry`）。
-                runCatching { repository.rotateDeviceForRetry() }
+                repository.invalidatePlaybackModelCache()
                 playEpisode(episodeIndex,retryPosition,retryAutoplay,recovering=true)
             }
         }

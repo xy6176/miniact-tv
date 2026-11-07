@@ -286,7 +286,7 @@ class ContentRepository(
      * 服务器回 200/403/404 都无所谓——握手已经完成，连接按 keep-alive 留在池里，
      * 5 分钟内随便谁用。返回码与响应体全部丢弃，失败静默。
      *
-     * 用 `HEAD` 而不是真业务接口：不消耗按设备计的接口额度（见 `modelDeviceId` 那一节的实测），
+     * 用 `HEAD` 而不是真业务接口：不消耗按设备计的接口额度，
      * 也不会在服务端留下「取过一次推荐」的记录。
      *
      * **必须在后台线程调**（最长会等一个连接超时）。
@@ -875,25 +875,17 @@ class ContentRepository(
      *
      * ## 什么时候升到 5
      *
-     * **默认从 4 开始，只有被限流才升**（见 [tryModelPath]）：空响应 = 这台设备（`device_id`）
-     * 被挡，先换一个 `device_id` 再打；换号之后仍然被挡，才把档位升到 5（多要两档，
-     * 同时也是一次「换一张额度表」）。4 档一直能命中就永远用 4——档位越高服务端算得越久。
-     *
-     * 升到 5 之后**不再降回来**：这个进程后面每一集都按 5 要（[beginEpisode] 会把新一集
-     * 重置回 4，见那里的说明），避免「每集都先被 4 档限流一次」。
+     * 4 档连续两次返回空响应时，可用 5 档做最后一次重试。新一集由 [beginEpisode] 恢复到 4 档。
      */
     @Volatile var deviceLevel: Int = 4
         set(value) { field = if(value>=5) 5 else 4 }
 
     /**
      * 新一集起播前把档位重置回默认的 4。
-     *
-     * 需求口径是「默认用 4」：限流是**临时**状态，上一集被限流不代表下一集也要多要两档。
-     * 重置只影响请求参数，不碰 `device_id` 的轮换状态（那个是进程级、换号才有意义）。
      */
     fun beginEpisode() { deviceLevel=4 }
 
-    /** 4 档换号之后仍然被限流：升到 5（见 [deviceLevel] 与 [tryModelPath]）。 */
+    /** 请求平台提供 5 档设备的清晰度列表。 */
     fun escalateDeviceLevel() {
         if(deviceLevel>=5) return
         deviceLevel=5
@@ -3083,111 +3075,41 @@ class ContentRepository(
         }
         return rows.values.toList()
     }
-    /**
-     * 取一集的播放模型（`video_model`）。
-     *
-     * 平台 2026-10-14 又改了一次播放接口：原先带场景段的
-     * `/novel/player/multi_video_model/:dr_scene/v1/` 现在一律返回 **HTTP 200 + 空响应体**，
-     * 旧路径 `/novel/player/multi_video_model/v1/` 返回 `Code 110001 未知异常`，
-     * 表现出来还是「所有影片都放不了」。现在能用的那条是 `/novel/player/video_model/v1/`，
-     * 而且**请求体形态也变了**：要 `video_id` 单值，不再是 `mixed_video_id_map`
-     *（给 `mixed_video_id_map` / `vid` / `video_ids` 都返回 `100001 video_id invalid`）。
-     *
-     * 因此按「新路由 → 带场景段 → 旧路径」的顺序试，第一个能取到 `video_model` 的用；
-     * 全失败时抛出最后一个错误，界面照常显示「播放接口暂不可用」。
-     *
-     * **空响应体必须当失败**：网关在业务处理前挡掉请求时就是 `200 + 0 字节`，
-     * 这时业务码取不到、默认成 0，不判空就会被当成成功往下走（0.15.0 那次改版栽的就是这个）。
-     *
-     * 2026-10-15 平台又加了一道门槛：**匿名请求一律 `200 + 0 字节`**，路径与请求体都没变，
-     * 因此五条候选路径会全部走完、最后抛出最后一条的错误码（`110001`），
-     * 表现出来还是「所有影片都放不了」。带上账号 Cookie 后同一个请求 15/15 稳定命中 `code 0`，
-     * 所以这里给播放请求补上 `Cookie` 头。
-     *
-     * 补的**只有** `Cookie`：这个接口对 `x-tt-token` 的长度敏感（实测 ≥99 字符直接判死），
-     * 而账号凭据那份整段 cookie 串有 800 多字符，同时塞进 `x-tt-token` 会让请求回空
-     *（搜索接口容忍这种写法，播放接口不容忍——真 App 用的是 355 字符的 hex token）。
-     *
-     * 2026-10-27 现场「所有影片都放不了」：一开始以为又是**路径改版**（当天 `multi_video_model`
-     * 命中、其余路径 0/8~0/12），后来逐条对照才确认真正的原因是**设备被限流**：
-     * 同一个 `device_id` 打多了，这条接口就一律回 `200 + 0 字节`，与走哪条路径无关
-     *（换了 `device_id` 之后，连当时记成「死路」的 `preload` 也回 `code 0`）。
-     * 详见 [modelDeviceId] 与 [probeModelPath] 里的实测表。
-     *
-     * 于是原来的「5 路并发 × 每条 4 次空响应重发」正好把唯一能用的那条压死：
-     * 单次起播 20 个请求，加上下一集预热与 1s/2.5s/5s 的自动重试，形成持续的并发风暴，
-     * 表现就是「突然所有影片都放不了」，且永远报「空响应」（空响应那条要重发 2 秒才抛，
-     * 比业务错误晚，`failure` 被它覆盖）。
-     *
-     * 现在的做法：候选表只留「老路径 + 新路由」两条，**串行**探测；
-     * 队首那条最多试 [MODEL_BLANK_RETRIES] 次，每次空响应都换一个 `device_id`
-     *（见 [rotateModelDevice]，实测换 id 后 0 间隔连打 10/10、8 线程并发 40/40）；
-     * 并放弃并发（[com.hgtv.star.core.RequestScope] 的语义不变，只是不再同时打多条路）。
-     *
-     * 早先还有一条「某条路径连续 2 次空响应就冷却 10 分钟」的机制，已删除：
-     * 空响应是**设备被限流**，不是路径失效，冷却它等于让用户十分钟里一次都试不了
-     *（2026-10-27 现场：两条路径都被判死，界面一直转圈重试）。
-     */
+    /** 使用同一份设备档案签名，串行尝试两条播放模型接口。 */
     private fun videoModel(id: String): JSONObject {
-        val host="https://api5-normal-sinfonlineb.fqnovel.com"
-        // 2026-10-27 实测：老路径 `/multi_video_model/v1/` 是最稳的一条
-        //（同一台设备 5/8、4/12、6/12、8/10），10-14 那版新路由 `/video_model/v1/` 当天 0/8。
-        // 当时把 0/8 归因成「路径判死」，事后确认是**设备被限流**（见 [modelDeviceId]）：
-        // 换一个 `device_id` 之后连 `preload` 都回 `code 0`。路径本身没有反转。
-        //
-        // 仍然只留**两条**：起播只需要一条能用的路，多发一条只是多一次往返；
-        // 新路由留作探针——平台真改版时第一发成功就会把 [preferredModelPath] 换成它，
-        // 不必等下一次发版。`preload` / `default` / `detail` 与老路径是同一份 body、
-        // 同一份返回值，留着重试没有意义。
+        val host="https://$VIDEO_HOST"
         val candidates=listOf(
             "/novel/player/multi_video_model/v1/",
             "/novel/player/video_model/v1/"
         )
-        // 播放接口对**匿名设备**也放行（官方 App 冷启动未登录即可播放，见 HAR），
-        // 前提是这台设备已在服务端注册过（见 [registerDevice]）：未注册回 `101000 服务异常`
-        // 或 `200 + 0 字节`，注册后回 `code 0` + 完整播放模型。
-        // 因此这里用合并档案（含本机身份，见 [deviceProfile]），并带上注册下发的设备 Cookie；
-        // 有账号凭据时以凭据的整段 Cookie 为准。
-        // 会话层优先：`sid_guard` 会被心跳续期，凭据对象是登录那一刻的快照。
-        val cookie=com.hgtv.star.core.session.SessionBridge.state?.cookieHeader?.takeIf { it.isNotBlank() }
-            ?: credentials?.cookie?.takeIf { it.isNotBlank() }
-            ?: registrationCookies.entries.joinToString("; ") { (name,value) -> "$name=$value" }.takeIf { it.isNotEmpty() }
-        // 记住的那条路径排到最前（见 [preferredModelPath]）。
         val ordered=if(preferredModelPath.isEmpty()) candidates
             else candidates.sortedByDescending { it==preferredModelPath }
         val scope=RequestScope.current()
-        // 同一集刚取过就复用：推荐页预热、正片起播、下一集预取会**同时**要同一集的地址，
-        // 各发一轮就是三份并发（见下面的单飞闸门）。缓存很短（[MODEL_CACHE_MS]），
-        // 地址本身小时级有效，这里只是用来把「同一刻的重复请求」合并掉。
-        // 键里带 [deviceLevel] 与 [modelCacheGen]：换过档位 / 换过 `device_id` 的那一份模型
-        // 就是「旧参数换来的地址」，再拿它去取流等于白换一次（见 [rotateDeviceForRetry]）。
-        val cacheKey=modelCacheKey(id)
-        if(modelCacheTtl>0L) modelCache[cacheKey]?.let { (at,model) ->
-            if(System.currentTimeMillis()-at<=modelCacheTtl) return model
-            modelCache.remove(cacheKey)
-        }
-        // **进程级单飞**：这条接口对并发极敏感（20 并发 0 命中、单发 50~80% 命中），
-        // 而点一次播放就可能同时存在主实例 / 预取实例 / 推荐页预热实例三份请求。
-        // 因此整个取地址段串行化：后来的等前一个结束，然后再查一次上面那份缓存。
+        // 主播放和预加载共用请求闸门。重试后使用新缓存代次，避免拿回失败的地址。
         val gate=modelGate
         if(!gate.tryAcquire(MODEL_GATE_TIMEOUT_MS,TimeUnit.MILLISECONDS)) {
             throw IOException("播放接口暂不可用（取地址排队超时）")
         }
         try {
+            val profile=deviceProfile()
+            val generation=modelCacheGen.get()
+            val cacheKey=modelCacheKey(id,profile,generation)
             if(modelCacheTtl>0L) modelCache[cacheKey]?.let { (at,model) ->
                 if(System.currentTimeMillis()-at<=modelCacheTtl) return model
+                modelCache.remove(cacheKey)
             }
-            val model=fetchModel(id,scope,ordered,host,cookie)
-            // 缓存键用**真正取成功时**的档位（这一轮可能刚从 4 升到 5，见 [tryModelPath]）。
-            if(modelCacheTtl>0L) modelCache[modelCacheKey(id)]=System.currentTimeMillis() to model
+            val model=fetchModel(id,scope,ordered,host,profile)
+            if(modelCacheTtl>0L) {
+                modelCache[modelCacheKey(id,profile,generation)]=System.currentTimeMillis() to model
+            }
             return model
         } finally {
             gate.release()
         }
     }
 
-    /** 播放模型的合并缓存键：集 + 当前档位 + 身份代次（见 [videoModel]）。 */
-    private fun modelCacheKey(id: String)="$id@$deviceLevel@g$modelCacheGen"
+    private fun modelCacheKey(id: String,profile: Map<String,String>,generation: Int)=
+        "$id@$deviceLevel@${profile["device_id"]}@${profile["iid"]}@g$generation"
 
     /**
      * 一次播放模型请求的 body（[deviceLevel] 每次现读，因为一轮里它可能从 4 升到 5）。
@@ -3218,32 +3140,24 @@ class ContentRepository(
         }
     }
 
-    /**
-     * [videoModel] 里真正打请求的那一段（持锁执行，见那里的 `modelGate`）。
-     *
-     * 只有队首那条路径会**多次**重试，其余路径只试一次。原因见 [probeModelPath]：
-     * 平台是按 `device_id` 计额度挡的，与走哪条路径无关，所以「换路径」几乎没有意义，
-     * 有效动作是**换一个 `device_id` 再打**（见 [rotateModelDevice]）。
-     */
+    /** 首选线路的空响应允许有限重试，备用线路只试一次。 */
     private fun fetchModel(
         id: String,
         scope: RequestScope?,
         ordered: List<String>,
         host: String,
-        cookie: String?
+        profile: Map<String,String>
     ): JSONObject {
         var failure: IOException?=null
         ordered.forEachIndexed { index, path ->
             val model=try {
                 RequestScope.withScope(scope) {
-                    // 队首 3 次、其余 1 次：起播只需要一条能用的路，多发一条只是多一次往返。
-                    // 每次空响应都换 `device_id`，换号之后仍然被挡才升 `device_level`（见 [tryModelPath]）。
-                    tryModelPath(host,path,id,cookie,if(index==0) MODEL_BLANK_RETRIES+1 else 1)
+                    tryModelPath(host,path,id,profile,if(index==0) MODEL_BLANK_RETRIES+1 else 1)
                 }
             } catch(e: IOException) {
                 // 用户切走了（取消域）：这不是「这条路不通」，不该再往下试另一条。
                 if(isInterruption(e) || e.message=="请求已取消") throw e
-                failure=e
+                if(failure !is DeviceNotRegisteredException) failure=e
                 null
             }
             if(model!=null) {
@@ -3257,168 +3171,32 @@ class ContentRepository(
         throw failure ?: IOException("播放接口暂不可用")
     }
 
-    /**
-     * 在一条路径上试 [attempts] 次，每次之间隔 [MODEL_SPACING_MS]（见 [waitModelSlot]）。
-     *
-     * 只对**空响应**重试：那是这台设备被挡了（按 `device_id` 计额度），业务错误（`code≠0`）
-     * 说明请求已经到了后端，重发是同一个结果，直接抛出去换下一条路径。
-     *
-     * ## 限流的两级处置（需求口径）
-     *
-     * 1. 第一次空响应 → **换一个 `device_id`**，档位仍是 4；
-     * 2. 换号之后**仍然**空响应 → 档位升到 **5**（同时再换一次号），多要两档；
-     * 3. 5 档还被挡 → 继续换号重试。
-     *
-     * 档位升到 5 之后本集不再回退（见 [deviceLevel]），下一集由 [beginEpisode] 重置回 4。
-     */
-    private fun tryModelPath(host: String,path: String,id: String,cookie: String?,attempts: Int): JSONObject {
-        var last: ModelBlankException?=null
-        var blanksAtCurrentLevel=0
-        for(i in 1..attempts) {
+    private fun tryModelPath(
+        host: String,path: String,id: String,profile: Map<String,String>,attempts: Int
+    ): JSONObject {
+        for(attempt in 1 until attempts) {
             try {
-                return probeModelPath(host,path,id,cookie,i)
-            } catch(e: ModelBlankException) {
-                last=e
-                blanksAtCurrentLevel++
-                // 空响应 = **这台设备**被挡了（见 [rotateModelDevice]）。
-                // 换一个 device_id 立刻恢复：实测连打 0 间隔 8/8、8 线程各持一个 id 40/40，
-                // 而同一个 id 在 0.4 秒间隔下只有 5/12、3 秒间隔 5/6。
-                // 因此**每次**空响应都换 id —— 包括这条路径已经没有下一次尝试的情况：
-                // 那次失败会让界面进入自动重试，下一次起播必须拿一个新 id，否则只是
-                // 把同一个被挡的身份再打一遍。
-                rotateModelDevice()
-                // 换号之后仍然被挡：升到 5 档再试（见 [deviceLevel]）。
-                if(blanksAtCurrentLevel>=2) escalateDeviceLevel()
+                return probeModelPath(host,path,id,profile,attempt)
+            } catch(_: ModelBlankException) {
+                if(attempt>=2) escalateDeviceLevel()
             }
         }
-        throw last ?: IOException("播放接口暂不可用")
+        return probeModelPath(host,path,id,profile,attempts)
     }
 
-    /** 播放请求用的档案：只把 `device_id` 换成当前值，其余字段与本机完全一致（见 [modelDeviceId]）。 */
-    private fun modelProfile(): Map<String,String> =
-        LinkedHashMap(deviceProfile()).apply { put("device_id",currentModelDeviceId()) }
-
-    /**
-     * 当前该用哪个 `device_id`：**从不使用本机真值，第一次调用就现造一个新号**。
-     *
-     * 为什么不先拿本机真值试一发：那个号在这台设备上早就用满了额度，第一发必然是
-     * `200 + 0 字节`（实测固定 450~520ms），白白把起播往后推半秒；随后还得再换一次号重发。
-     * 跳掉这一发，起播路径上只剩一次能命中的请求。
-     *
-     * 本机身份一变（重新注册成功 / 导入凭据），轮换状态整体作废重来：新身份意味着
-     * 额度重新计，之前记下的「已挡」名单没有参考价值。
-     */
-    private fun currentModelDeviceId(): String = synchronized(deviceRotateLock) {
-        val real=deviceIdentity["device_id"].orEmpty()
-        if(real!=modelRealIdSeen) {
-            modelRealIdSeen=real
-            modelBurnedIds.clear()
-            // 身份换过（重新注册 / 导入凭据）：丢掉上一个身份的号，下面现造一个。
-            //
-            // **存档里跨进程复用一个「上次成功过」的 id 是刻意不做的**：
-            // 平台按 `device_id` 计额度，被打满的号恢复得很慢（实测 15 / 30 / 60 秒单发仍全空），
-            // 冷启动拿一个旧号打第一发，等于把唯一一次起播机会押在一个可能已经废掉的号上——
-            // 现场表现就是「起播直接失败，换一个 id 才好」。
-            // 同理，**本机真值也不能拿来打第一发**：它正是最容易早已打满的那个号。
-            modelDeviceId=""
-        }
-        modelDeviceId.takeIf { it.isNotEmpty() }?.let { return@synchronized it }
-        val id=newModelDeviceId()
-        modelDeviceId=id
-        NetLog.emit("model device fresh ${id.takeLast(6)} (real ${real.takeLast(6)})")
-        id
-    }
-
-    /**
-     * 服务端说「这台设备没注册过」（`101000`）时清掉轮换状态。
-     *
-     * 轮换出来的随机 id 天然是「未注册」的：播放接口对这种 id 放行，但一旦平台收紧
-     * （回 `101000`），继续换随机 id 只会一直撞同一句话。此时正确动作是交出本机真值、
-     * 让界面层重新注册一台（见 `MainActivity.healDeviceIdentity`），
-     * 而不是继续制造新身份——那是我们唯一能保证「换完之后是注册过的」的来源。
-     */
-    private fun resetModelRotation() {
-        synchronized(deviceRotateLock) {
-            modelDeviceId=""
-            modelBurnedIds.clear()
-            modelRealIdSeen=""
-            // 身份要重注册：旧身份换来的那份模型也不能再用了（见 [modelCacheGen]）。
-            modelCacheGen++
-        }
-    }
-
-    /**
-     * 换一个 `device_id`（见 [modelDeviceId]），返回新值。
-     *
-     * 两条入口：[tryModelPath] 每次空响应换号（那时持着 `modelGate`），
-     * 以及界面上的重试（[rotateDeviceForRetry]，不持闸门）。因此这里自己用
-     * [deviceRotateLock] 串行：两条线程同时轮换会各造一个号、丢掉其中一个，
-     * 还会把同一个号重复记进 [modelBurnedIds]。
-     */
-    private fun rotateModelDevice(): String {
-        synchronized(deviceRotateLock) {
-            val previous=modelDeviceId
-            if(previous.isNotEmpty()) modelBurnedIds+=previous
-            val next=newModelDeviceId()
-            modelDeviceId=next
-            // 模型缓存作废：那是「用旧身份换来的地址」，给新身份用等于白换一次号
-            //（见 [videoModel] 的 cacheKey 与 [rotateDeviceForRetry]）。
-            modelCacheGen++
-            NetLog.emit("model device rotate ${previous.takeLast(6)} -> ${next.takeLast(6)}")
-            return next
-        }
-    }
-
-    /** 生成一个形状与本机一致的 15 位 `device_id`（`88…`），并避开本机真值和已被挡过的值。 */
-    private fun newModelDeviceId(): String {
-        val real=deviceIdentity["device_id"].orEmpty()
-        while(true) {
-            // 固定 15 位（`1e14`~`1e15`）：与真机 `device_id` 的位数一致。
-            // `nextLong()` 可能为负，直接取模会掉到 14 位，所以这里取正模；
-            // **不能用 `Math.floorMod`**：那是 API 24 的方法，4.4 上是 `NoSuchMethodError`。
-            val span=900_000_000_000_000L
-            val raw=modelIdRandom.nextLong()%span
-            val id=(100_000_000_000_000L+(if(raw<0) raw+span else raw)).toString()
-            if(id!=real && !modelBurnedIds.contains(id) && id!=modelDeviceId) return id
-        }
-    }
-
-    /** 网关挡请求（`200 + 0 字节`）：换 id 再试就能过，所以单独一个类型（见 [tryModelPath]）。 */
     private class ModelBlankException(message: String): IOException(message)
 
-    /**
-     * 在 [path] 上打**一次**播放模型请求。
-     *
-     * ## 为什么挡请求和参数无关（2026-10-27 实测，这是本方法所有取舍的依据）
-     *
-     * 被挡时是 `200 + Content-Length: 0`，响应头多一个 `tt_stable: 1`（正常响应没有）。
-     * 用**同一份** body / 签名 / Cookie / 设备身份对着同一个 host 打：
-     *
-     * * 3 秒一发：5/6、6/6 命中；500 毫秒一发：基本 0 命中；20 并发：0/20。
-     * * 把 UA 换成仓库内置的 `25053RT47C / Android 16`（`code 0`）、或换成模拟器机型、
-     *   或去掉 / 加上 Cronet 段：都在 3~5/6，**没有一种掉到 0**。
-     * * `Accept-Encoding` / `Accept-Language` / `Connection: close` 逐个换成 App 的写法：同样不变。
-     *
-     * 也就是说：请求内容完全无罪，判据是「这台设备（`device_id`）打了多少次」。
-     * 因此空响应一律换 `device_id` 再试（见 [rotateModelDevice]），并且**不再**用
-     * 「这条路径空响应几次就判死十分钟」那种机制——那是把「设备被限流」误判成
-     * 「路径失效」，会让用户十分钟里一次都试不了（2026-10-27 现场正是如此：
-     * 两条路径都被判死，界面一直转圈重试）。
-     *
-     * 空响应**不**记「设备被拒」：那会把好设备的身份反复换掉。真正明确的信号只有 `101000`。
-     */
-    private fun probeModelPath(host: String,path: String,id: String,cookie: String?,attempt: Int): JSONObject {
-        // body 每次现拼：这一轮里 `device_level` 可能刚从 4 升到 5（见 [tryModelPath]）。
-        val body=modelBody(id,newRoute=!path.contains("multi_video_model"))
-        val payload=body.toByteArray()
+    private fun probeModelPath(
+        host: String,path: String,id: String,profile: Map<String,String>,attempt: Int
+    ): JSONObject {
+        val payload=modelBody(id,newRoute=!path.contains("multi_video_model")).toByteArray()
         waitModelSlot()
-        // 只在这里换 `device_id`（见 [modelDeviceId]）：其余接口一律用本机真值。
-        val profile=modelProfile()
-        // 档案要同时交给 query 与密文（`x-medusa` 里编了 device_id），否则服务端回 110001。
+        // 请求参数和签名使用同一份档案，设备 ID 与安装 ID 来自已有注册结果。
         val signed=signer.sign(host+path,profile,payload,deviceOverride=profile)
-        val extra=linkedMapOf<String,String>()
-        if(cookie!=null) extra["Cookie"]=cookie
-        val request=signed.copy(headers=signed.headers+extra)
+        val cookie=com.hgtv.star.core.session.SessionBridge.state?.cookieHeader?.takeIf { it.isNotBlank() }
+            ?: credentials?.cookie?.takeIf { it.isNotBlank() }
+            ?: registrationCookies.entries.joinToString("; ") { (name,value) -> "$name=$value" }.takeIf { it.isNotEmpty() }
+        val request=if(cookie==null) signed else signed.copy(headers=signed.headers+("Cookie" to cookie))
         var stable=false
         val response=text(signed.url,request) { r -> stable=r.header("tt_stable")=="1" }
         // 网关挡掉请求时是 200 + 0 字节：业务码取不到会默认成 0，必须先判空。
@@ -3432,21 +3210,16 @@ class ContentRepository(
         // 业务码非 0 就是这一条路不通（110001 是旧路径的「未知异常」，100001 是参数错误）。
         // `101000 服务异常` 正是「这台设备没在服务端注册过」那一条，单独记一笔：
         // 界面层据此换一份身份重注册，而不是让用户看到「所有影片都放不了」。
-        if(code==101000) { noteDeviceRejected(); resetModelRotation() }
+        if(code==101000) {
+            noteDeviceRejected()
+            invalidatePlaybackModelCache()
+            throw DeviceNotRegisteredException("播放接口暂不可用（101000）")
+        }
         if(code!=0) throw IOException("播放接口暂不可用（${code}）")
         return videoModelOf(data) ?: throw IOException("播放接口暂不可用（没有播放模型）")
     }
 
-    /**
-     * 两次播放模型请求之间至少隔 [MODEL_SPACING_MS]，**进程级**节流。
-     *
-     * 必须先持有 `modelGate`（见 [videoModel]）：只有全局串行时这个时间戳才说得清
-     * 「上一次是什么时候打的」。第一次不等待（时间戳初值 0）。
-     *
-     * 为什么只剩 200 毫秒：真正的限流是**按 `device_id`** 计的，换 id 比等待有用得多
-     *（换 id 后 0 间隔 10/10，同一个 id 等 3 秒也只有 5/6，见 [modelDeviceId]）。
-     * 这里只挡异常连打，不承担限流职责。
-     */
+    /** 播放模型请求共享最小间隔，避免预加载与正式播放密集发出请求。 */
     private fun waitModelSlot() {
         if(modelSpacing<=0L) return
         val wait=modelLastAttemptAt.get()+modelSpacing-System.currentTimeMillis()
@@ -3540,10 +3313,7 @@ class ContentRepository(
         val key=cacheKeyOf(id,maxQuality)
         synchronized(streamCache) { streamCache.remove(key) }
         PlaybackCache.invalidateUrl(key)
-        // 「这条地址不认了」= 下一次取地址当成一次全新尝试：换一个 `device_id`
-        //（见 [rotateDeviceForRetry]）。同一条死地址往往连着同一个已经被挡 / 被限速的身份，
-        // 只重取地址不换号，下一发很可能还是同一个结果。
-        rotateDeviceForRetry()
+        invalidatePlaybackModelCache()
     }
 
     /**
@@ -3562,28 +3332,15 @@ class ContentRepository(
             streamCache.keys.filter { it.startsWith("$id:") }.forEach(streamCache::remove)
         }
         PlaybackCache.invalidateUrlById(id)
-        rotateDeviceForRetry()
+        invalidatePlaybackModelCache()
     }
 
-    /**
-     * 用户侧「再试一次」时换一个设备身份。
-     *
-     * ## 为什么每试一次就换
-     *
-     * 播放接口按 `device_id` 计额度（实测：同一个号 0.4 秒间隔 5/12、3 秒间隔 5/6；
-     * 换号后 0 间隔 10/10、8 线程并发 40/40；被打满的号 15/30/60 秒后单发仍然全空，
-     * 见 [modelDeviceId]）。「同一个号等一会儿再试」在用户能忍的几十秒里是无效动作，
-     * 有效动作只有换号。
-     *
-     * 三处调用：地址自愈（[forgetStream] → 本方法）、自动重试（`MainActivity.retryRunnable`）、
-     * 错误页的「立即重试」/「换到 xP」。
-     *
-     * 换号顺带让 [modelCache] 里「旧身份换来的模型」失效（见 `modelCacheGen`），
-     * 否则重试会命中 60 秒的模型缓存、拿回一模一样的地址。
-     *
-     * 进程级：三份仓库实例（主 / 下一集预取 / 推荐预热）共用同一份轮换状态，见 companion 的说明。
-     */
-    fun rotateDeviceForRetry(): String = rotateModelDevice()
+    /** 让下次取流绕过旧模型，同时保留已注册的播放身份。 */
+    fun invalidatePlaybackModelCache() {
+        modelCacheGen.incrementAndGet()
+        modelCache.clear()
+    }
+
     /** 真正去取播放地址（[stream] 的缓存之外那一半）。 */
     private fun fetchStream(id: String, maxQuality: Int): StreamInfo {
         val model=videoModel(id)
@@ -3738,81 +3495,12 @@ class ContentRepository(
         private val modelGate=java.util.concurrent.Semaphore(1,true)
         /** 等闸门的上限：队首 3 次 + 其余 1 次，每次之间还要隔 [MODEL_SPACING_MS]，留足余量。 */
         private const val MODEL_GATE_TIMEOUT_MS=25_000L
-        /**
-         * 两次播放模型请求之间的最小间隔（进程级，见 [waitModelSlot]）。
-         *
-         * 只留一个很小的值挡「异常循环里的连打」。真正的限流靠换 `device_id`
-         * （见 [modelDeviceId]）：换 id 之后 0 间隔连打 10/10、8 线程并发 40/40，
-         * 所以这里**不需要**再等几秒——早先那版 3 秒间隔是在同一个 id 上硬等，
-         * 命中率只有 5/6，且每次重试白等 3 秒。
-         */
+        /** 两次播放模型请求之间的最小间隔（进程级）。 */
         private const val MODEL_SPACING_MS=200L
-        /** 空响应重试次数（不含首发）：每次都换一个 `device_id`，按实测几乎一次就中。 */
+        /** 首选线路遇到空响应时的重试上限。 */
         private const val MODEL_BLANK_RETRIES=2
-        /** 上一次打播放接口的时刻（0 = 本次进程还没打过，第一次不等待）。 */
         private val modelLastAttemptAt=java.util.concurrent.atomic.AtomicLong(0L)
-        /**
-         * 播放接口专用的 `device_id` 与轮换（见 [currentModelDeviceId] / [rotateModelDevice]）。
-         *
-         * ## 为什么只换 `device_id`、不换别的
-         *
-         * 2026-10-27 用同一台设备的身份做了三组对照（同一份 body / 签名 / Cookie / UA / 出口 IP）：
-         *
-         * | 做法 | 0.4 秒间隔 | 0 间隔 | 8 线程并发 |
-         * |---|---|---|---|
-         * | 固定 `device_id` | 5/12 | — | 23/40 |
-         * | **只换 `device_id`** | **8/8** | **10/10** | **40/40**（每个线程各持一个 id） |
-         * | 连 `iid` 一起换 | 5/12 | — | — |
-         *
-         * 结论：挡的是**这台设备**（按 `device_id` 计额度），不是 IP、不是并发、不是请求内容。
-         * 而且**不能动 `iid`**：`iid` 与 Cookie 里的 `install_id` 是同一台设备的凭据，
-         * 换掉 `iid` 而与 Cookie 对不上，命中率立刻掉回固定 id 那一档（5/12）——那才是真正的
-         * 「身份自相矛盾」。因此这里只覆盖 query 里的 `device_id`，`iid` / `cdid` / `openudid` /
-         * 机型 / 系统全部保持本机真值。
-         *
-         * 换 id 之后服务端照样回 `code 0` + 完整播放模型（20 KB 级，与本机 id 命中时同一形态），
-         * 不需要先注册：这台接口对 `device_id` 只用来计额度。
-         *
-         * ## 被挡过的那台为什么记着不再用
-         *
-         * 实测一个被打满的 id 恢复得很慢：连打 12 次之后，隔 5 秒单发能命中一次，
-         * 之后 15 / 30 / 60 秒单发**仍然全是空响应**。所以「用旧的 id 隔几秒再试」这条路
-         * 在用户的一次起播里根本走不通，必须记下来、别再用（见 [modelBurnedIds]）。
-         * 三份状态都放在 companion 里：主实例 / 下一集预取 / 推荐页预热各有一个 [ContentRepository]，
-         * 但它们认的是**同一台设备**、吃的是同一个额度（与 [modelGate]、[deviceRejectedCount] 同理）。
-         * 放实例字段的话，A 实例换掉的 id 只有 A 知道，B 还会拿被挡的 id 继续打。
-         */
-        /** 播放接口当前在用的 `device_id`（空 = 还没选，见 [currentModelDeviceId]）。 */
-        @Volatile private var modelDeviceId: String=""
-        /**
-         * 轮换用的锁：[tryModelPath] 持着 `modelGate` 换号，界面上的重试不持——
-         * 两条线程同时换会各造一个号、丢掉其中一个（见 [rotateModelDevice]）。
-         */
-        private val deviceRotateLock=Any()
-        /**
-         * 「身份代次」：每换一次 `device_id` 就 +1，并进 [videoModel] 的缓存键。
-         *
-         * 没有它，重试会命中 60 秒的 [MODEL_CACHE_MS] 模型缓存——那份模型里带着
-         * **旧身份签发的 `fallback_api` 地址**，于是「换了号还是同一个地址、还是同一个死 CDN」。
-         * 顺带保证三份仓库实例换号之后不会互相喂旧模型（缓存是实例级的）。
-         */
-        @Volatile private var modelCacheGen: Int=0
-        /** 上一次同步的本机真值 `device_id`：与 [deviceIdentity] 不一致就说明身份换了（见 [currentModelDeviceId]）。 */
-        private var modelRealIdSeen: String=""
-        /**
-         * 本进程里被挡过的 `device_id`：不再使用（恢复时间以分钟计，见 [modelDeviceId]）。
-         *
-         * **不能用 `ConcurrentHashMap.newKeySet()`**：那是 API 24 的方法，`minSdk` 是 19。
-         * 它写在 companion 的静态初始化里，4.4 上一加载 [ContentRepository] 就抛
-         * `NoSuchMethodError` → 类被标记为初始化失败 → `MainActivity` 构造期
-         * `NoClassDefFoundError: com/hgtv/star/core/c`，应用直接闪退（2026-10-28 现场日志）。
-         * `Collections.newSetFromMap` 是 Java 6 的 API（Android 2.3 起就有），
-         * 底层仍是同一个 `ConcurrentHashMap`，语义与并发保证完全一致。
-         */
-        private val modelBurnedIds: MutableSet<String> =
-            java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String,Boolean>())
-        /** 生成新 id 用；`minSdk 19` 用不了 `ThreadLocalRandom`，普通 `Random` 够了（只在持有闸门时用）。 */
-        private val modelIdRandom=java.util.Random(System.nanoTime())
+        private val modelCacheGen=java.util.concurrent.atomic.AtomicInteger()
         /** 播放模型的合并窗口：同一集在这段时间内只打一次接口（见 [videoModel]）。 */
         private const val MODEL_CACHE_MS=60_000L
 

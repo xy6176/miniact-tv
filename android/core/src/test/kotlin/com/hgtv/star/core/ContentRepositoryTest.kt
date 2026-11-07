@@ -100,46 +100,41 @@ class ContentRepositoryTest {
         assertTrue(paths.last()=="/novel/player/video_model/v1/")
     }
 
-    /**
-     * 空响应 = **这台设备**被平台限流（不是路径 / 参数 / 网络问题），换一个 `device_id`
-     * 立刻就能过（见 `ContentRepository.modelDeviceId` 里的实测表）。
-     *
-     * 这里钉住：第一次空响应之后**必须换 id 再试**，且换完就用上了新的那一份。
-     */
-    @Test fun blankResponseRotatesTheDeviceId() {
-        val ids=mutableListOf<String>()
+    @Test fun playbackRetriesWithTheSameRegisteredIdentity() {
+        val requests=mutableListOf<Request>()
         val repo=repository { request ->
-            when {
-                request.url.host=="example.com" -> fallbackList("bytevc1" to "https://example.com/stream")
-                else -> {
-                    val id=request.url.queryParameter("device_id").orEmpty()
-                    ids+=id
-                    // 第一个 id 只挡开头这一次，用来逼出一次换 id；换过之后一律给模型。
-                    if(ids.size==1) "" else legacyVideoModel("https://example.com/stream")
-                }
+            if(request.url.host=="example.com") fallbackList("bytevc1" to "https://example.com/stream")
+            else {
+                requests+=request
+                if(requests.size==1) "" else legacyVideoModel("https://example.com/stream")
             }
         }
+        val deviceId="881234567890123"
+        val installId="991234567890123"
+        repo.deviceIdentity=mapOf("device_id" to deviceId,"iid" to installId)
+        repo.restoreDeviceCookies(mapOf("install_id" to installId))
+
         assertEquals("https://example.com/stream",repo.stream("123").url)
-        assertEquals(2,ids.size)
-        assertNotEquals(ids[0],ids[1])
-        assertTrue(ids[1].length==15)
+        assertEquals(listOf(deviceId,deviceId),requests.map { it.url.queryParameter("device_id") })
+        assertEquals(listOf(installId,installId),requests.map { it.url.queryParameter("iid") })
+        assertEquals(listOf("install_id=$installId","install_id=$installId"),requests.map { it.header("Cookie") })
     }
 
-    /**
-     * 业务错误（`code≠0`）**不换** `device_id`：请求已经进了后端，说明这台设备没被限流，
-     * 那是路径 / 参数的问题，换身份没有意义（还会把本机真值记成「已被挡」）。
-     */
-    @Test fun businessErrorDoesNotRotateTheDeviceId() {
-        val ids=mutableListOf<String>()
+    @Test fun fallbackRouteKeepsTheRegisteredIdentity() {
+        val requests=mutableListOf<Request>()
         val repo=repository { request ->
-            when {
-                request.url.host=="example.com" -> fallbackList("bytevc1" to "https://example.com/stream")
-                request.url.encodedPath=="/novel/player/video_model/v1/" -> videoModel("https://example.com/stream")
-                else -> { ids+=request.url.queryParameter("device_id").orEmpty(); """{"Code":110001,"Message":"未知异常"}""" }
+            if(request.url.host=="example.com") fallbackList("bytevc1" to "https://example.com/stream")
+            else {
+                requests+=request
+                if(request.url.encodedPath=="/novel/player/video_model/v1/") videoModel("https://example.com/stream")
+                else """{"Code":110001,"Message":"未知异常"}"""
             }
         }
+        val deviceId="881234567890123"
+        repo.deviceIdentity=mapOf("device_id" to deviceId,"iid" to "991234567890123")
+
         assertEquals("https://example.com/stream",repo.stream("123").url)
-        assertEquals(1,ids.distinct().size)
+        assertEquals(listOf(deviceId,deviceId),requests.map { it.url.queryParameter("device_id") })
     }
 
     /**

@@ -6,7 +6,7 @@
 
 ```sh
 adb connect TV_IP:5555
-adb -s TV_IP:5555 install -r MiniAct-1.2.9.1.apk
+adb -s TV_IP:5555 install -r MiniAct-1.2.9.2-68.apk
 adb -s TV_IP:5555 shell am start -n dev.miniact.nativeapp/com.hgtv.star.MainActivity
 ```
 
@@ -15,6 +15,12 @@ adb -s TV_IP:5555 shell am start -n dev.miniact.nativeapp/com.hgtv.star.MainActi
 部分TCL固件会对普通安装返回`INSTALL_FAILED_VERIFICATION_FAILURE`。本次TCL通过其“多屏互动”的应用推送确认入口安装成功。该过程需要电视确认“同意”，适用范围取决于固件；不建议通过卸载系统安装器或停用校验组件解决。本资料没有附一键自动安装脚本，也不运行Aerial的完整安装脚本来替代MiniAct安装。
 
 保留应用ID和签名的更新可使用覆盖安装。遇到签名不一致时不要直接卸载以免丢数据，应先确认安装包来源。新安装默认不携带别的应用或别的电视的账号。
+
+## 应用内更新
+
+进入「设置 → 关于 MiniAct → 检查更新」。发现更高版本后，可以在电视上下载并核验 APK，再打开系统安装界面确认覆盖安装。如果系统先要求允许 MiniAct 安装应用，授权后返回下载弹窗，再选择「安装更新」。
+
+更新需要电视能访问 GitHub。已有版本如果没有「检查更新」入口，需要手动覆盖安装一次支持此功能的版本。电视系统无法打开安装器时，可从 GitHub Releases 手动下载安装包。
 
 ## 默认遥控逻辑
 

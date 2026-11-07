@@ -18,7 +18,7 @@
   <a href="#参与反馈">参与反馈</a>
 </p>
 
-> 当前版本：**1.2.9.1（67）· 预览版**。首页图取自 11 月 2 日实机记录，选集图取自 11 月 3 日记录；各项验证范围见[验证记录](docs/miniact/VALIDATION.md)。
+> 当前版本 **1.2.9.2（68）· 预览版**。首页图取自 11 月 2 日实机记录，选集图取自 11 月 3 日记录。各项验证范围见[验证记录](docs/miniact/VALIDATION.md)。
 
 ## 适合大屏，也顺手
 
@@ -57,6 +57,8 @@
 ## 下载与安装
 
 从 [Releases 下载 MiniAct APK](https://github.com/xy6176/miniact-tv/releases)，通过电视支持的安装器安装。完整步骤见[安装与使用](docs/miniact/USER_GUIDE.md)。
+
+安装支持应用内更新的版本后，进入「设置 → 关于 MiniAct → 检查更新」，可以下载新版并在系统界面确认安装。
 
 适用于 Android 电视、盒子和投影设备。非 Android 电视系统不能直接安装 APK。同包名、同签名且版本满足要求时，可覆盖安装并保留本机数据；开发包与正式包可能使用不同签名。
 
@@ -99,7 +101,7 @@
 | `docs` | 安装、使用、兼容性、隐私和架构文档 |
 | `tools` | 构建及维护工具 |
 
-当前构建为 `1.2.9.1 / 67`。仓库根目录运行 `bash tools/build-miniact.sh`，脚本会设置正确版本并构建开发包。完整命令与签名说明见[构建文档](docs/miniact/BUILD.md)。
+当前构建为 `1.2.9.2 / 68`。仓库根目录运行 `bash tools/build-miniact.sh`，脚本会设置对应版本并构建开发包。完整命令与签名说明见[构建文档](docs/miniact/BUILD.md)。
 
 </details>
 
